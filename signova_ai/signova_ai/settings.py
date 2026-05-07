@@ -31,7 +31,7 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = True
 
 
-ALLOWED_HOSTS = ['.onrender.com']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -128,26 +128,22 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': 'db.sqlite3',
+    }
+}
 
+
+
+from mongoengine import connect
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI")
-SECRET_KEY = os.getenv("SECRET_KEY")
-
-
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'djongo',
-        'NAME': 'signova_db',
-        'ENFORCE_SCHEMA': False,
-        'CLIENT': {
-            'host': 'mongodb+srv://signova_user:Signova12345@signova-cluster.dqttng1.mongodb.net/signova_db?retryWrites=true&w=majority',
-            'tls': True,
-            'tlsAllowInvalidCertificates': True,
-        }
-    }
-}
+connect(
+    db='signova_db',
+    host=os.getenv("MONGO_URI")
+)

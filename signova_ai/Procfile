@@ -1,0 +1,1 @@
+web: gunicorn signova_ai.wsgi:application

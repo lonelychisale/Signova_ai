@@ -1,50 +1,16 @@
-from django.db import models
-from django.contrib.auth.models import User
+from mongoengine import Document, StringField, IntField, EmailField
 
 
-class UserProfile(models.Model):
+class User(Document):
 
-    USER_TYPES = (
-        ('deaf', 'Deaf'),
-        ('hearing', 'Hearing'),
-    )
+    username = StringField(required=True)
 
-    GENDER_CHOICES = (
-        ('male', 'Male'),
-        ('female', 'Female'),
-        ('other', 'Other'),
-    )
+    email = EmailField(required=True)
 
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE
-    )
+    password = StringField(required=True)
 
-    phone_number = models.CharField(
-        max_length=20,
-        blank=True
-    )
+    country = StringField()
 
-    preferred_sign_language = models.CharField(
-        max_length=100,
-        default='ASL'
-    )
+    gender = StringField()
 
-    user_type = models.CharField(
-        max_length=20,
-        choices=USER_TYPES
-    )
-
-    country = models.CharField(
-        max_length=100
-    )
-
-    gender = models.CharField(
-        max_length=20,
-        choices=GENDER_CHOICES
-    )
-
-    age = models.IntegerField()
-
-    def __str__(self):
-        return self.user.username
+    age = IntField()

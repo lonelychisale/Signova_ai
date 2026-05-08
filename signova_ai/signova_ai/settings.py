@@ -145,6 +145,8 @@ import os
 load_dotenv()
 
 connect(
-    db='signova_db',
-    host=os.getenv("MONGO_URI")
+    db="signova_db",
+    host=os.getenv("MONGO_URI"),
+    tls=True,
+    tlsAllowInvalidCertificates=True
 )

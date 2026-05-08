@@ -1,27 +1,32 @@
 from django.urls import path
+
 from .views import (
     register_user,
+    login_user,          # ✅ IMPORTANT: use your custom login
     user_profile,
     forgot_password,
     reset_password
 )
 
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt.views import TokenRefreshView
+
 
 urlpatterns = [
 
-    path('register/', register_user),
+    # ✅ REGISTER
+    path('register/', register_user, name='register'),
 
-    path('login/', TokenObtainPairView.as_view()),
+    # ✅ LOGIN (MongoDB + bcrypt + your model)
+    path('login/', login_user, name='login'),
 
-    path('token/refresh/', TokenRefreshView.as_view()),
+    # ✅ REFRESH TOKEN (keep this)
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
-    path('profile/', user_profile),
+    # ✅ PROFILE
+    path('profile/', user_profile, name='profile'),
 
-    path('forgot-password/', forgot_password),
+    # ✅ PASSWORD RESET
+    path('forgot-password/', forgot_password, name='forgot_password'),
+    path('reset-password/', reset_password, name='reset_password'),
 
-    path('reset-password/', reset_password),
 ]

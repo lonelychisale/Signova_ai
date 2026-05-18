@@ -1,22 +1,84 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework import status
+
+from .db import db
+
+import bcrypt
+import jwt
+import datetime
+import os
+
+from bson.objectid import ObjectId
+from functools import wraps
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import User
+from dotenv import load_dotenv
+load_dotenv()
 
-import bcrypt
 
 
-# ================================
-# ✅ REGISTER USER
-# ================================
+#  CONFIG
+
+SECRET_KEY = os.getenv("SECRET_KEY") or "fallback_secret_key"
+
+ACCESS_TOKEN_LIFETIME = datetime.timedelta(minutes=60)
+REFRESH_TOKEN_LIFETIME = datetime.timedelta(days=7)
+
+users_col = db["users"]
+blacklist_col = db["blacklist"]
+
+
+
+#  TOKEN DECORATOR 
+
+def token_required(view_func):
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+
+        if not auth_header:
+            return Response({"error": "Token missing"}, status=401)
+
+        try:
+            #  Works with Swagger + Postman
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split()[1]
+            else:
+                token = auth_header.strip()
+
+            payload = jwt.decode(
+                token,
+                SECRET_KEY,
+                algorithms=["HS256"],
+                leeway=30
+            )
+
+            if payload.get("type") != "access":
+                return Response({"error": "Use access token"}, status=401)
+
+            if blacklist_col.find_one({"token": token}):
+                return Response({"error": "Token blacklisted"}, status=401)
+
+            request.user_id = payload["user_id"]
+
+        except jwt.ExpiredSignatureError:
+            return Response({"error": "Token expired"}, status=401)
+
+        except Exception as e:
+            return Response({"error": "Invalid token", "details": str(e)}, status=401)
+
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
+
+
+
+#  REGISTER
 @swagger_auto_schema(
     method='post',
-    operation_description="Register a new user",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         required=['username', 'email', 'password'],
@@ -33,59 +95,37 @@ import bcrypt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
-    username = request.data.get('username')
-    email = request.data.get('email')
-    password = request.data.get('password')
-    country = request.data.get('country')
-    gender = request.data.get('gender')
-    age = request.data.get('age')
+    data = request.data
 
-    if not username or not email or not password:
-        return Response(
-            {"error": "Username, email and password are required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not all([data.get('username'), data.get('email'), data.get('password')]):
+        return Response({"error": "Missing required fields"}, status=400)
 
-    # ✅ Check existing user
-    if User.objects.filter(username=username).first():
-        return Response({"error": "Username already exists"}, status=400)
+    if users_col.find_one({"email": data['email'].lower()}):
+        return Response({"error": "Email exists"}, status=400)
 
-    if User.objects.filter(email__iexact=email).first():
-        return Response({"error": "Email already exists"}, status=400)
+    hashed = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt())
 
-    # ✅ Hash password
-    hashed_password = bcrypt.hashpw(
-        password.encode('utf-8'),
-        bcrypt.gensalt()
-    ).decode('utf-8')
+    user_data = {
+        "username": data['username'],
+        "email": data['email'].lower(),
+        "password": hashed,
+        "country": data.get('country'),
+        "gender": data.get('gender'),
+        "age": data.get('age'),
+    }
 
-    user = User(
-        username=username,
-        email=email.lower(),  # ✅ normalize email
-        password=hashed_password,
-        country=country,
-        gender=gender,
-        age=age
-    )
-    user.save()
+    result = users_col.insert_one(user_data)
 
-    return Response(
-        {
-            "message": "User registered successfully",
-            "user_id": str(user.id),
-            "username": user.username,
-            "email": user.email
-        },
-        status=status.HTTP_201_CREATED
-    )
+    return Response({
+        "user_id": str(result.inserted_id),
+        "message": "User registered successfully"
+    })
 
 
-# ================================
-# ✅ LOGIN USER
-# ================================
+
+#LOGIN
 @swagger_auto_schema(
     method='post',
-    operation_description="Login user",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         required=['email', 'password'],
@@ -98,114 +138,137 @@ def register_user(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
-    email = request.data.get('email')
-    password = request.data.get('password')
+    email = request.data.get("email")
+    password = request.data.get("password")
 
-    if not email or not password:
-        return Response(
-            {"error": "Email and password are required"},
-            status=400
-        )
-
-    # ✅ FIX: Use filter + case insensitive
-    user = User.objects.filter(email__iexact=email).first()
+    user = users_col.find_one({"email": email.lower()})
 
     if not user:
         return Response({"error": "Invalid email"}, status=404)
 
-    # ✅ Ensure correct format
-    stored_password = user.password
-    if isinstance(stored_password, str):
-        stored_password = stored_password.encode('utf-8')
+    if not bcrypt.checkpw(password.encode(), user["password"]):
+        return Response({"error": "Invalid password"}, status=400)
 
-    # ✅ Verify password
-    if bcrypt.checkpw(password.encode('utf-8'), stored_password):
-        return Response({
-            "message": "Login successful",
-            "user": {
-                "id": str(user.id),
-                "username": user.username,
-                "email": user.email,
-                "country": user.country,
-                "gender": user.gender,
-                "age": user.age
-            }
-        })
+    access_token = jwt.encode({
+        "user_id": str(user["_id"]),
+        "type": "access",
+        "exp": datetime.datetime.utcnow() + ACCESS_TOKEN_LIFETIME
+    }, SECRET_KEY, algorithm="HS256")
 
-    return Response({"error": "Invalid password"}, status=400)
+    refresh_token = jwt.encode({
+        "user_id": str(user["_id"]),
+        "type": "refresh",
+        "exp": datetime.datetime.utcnow() + REFRESH_TOKEN_LIFETIME
+    }, SECRET_KEY, algorithm="HS256")
 
+    
+    if isinstance(access_token, bytes):
+        access_token = access_token.decode()
 
-# ================================
-# ✅ USER PROFILE
-# ================================
-@swagger_auto_schema(
-    method='get',
-    operation_description="Get user profile by email",
-    manual_parameters=[
-        openapi.Parameter(
-            'email',
-            openapi.IN_QUERY,
-            description="User email",
-            type=openapi.TYPE_STRING
-        )
-    ]
-)
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def user_profile(request):
-    email = request.GET.get('email')
-
-    if not email:
-        return Response({"error": "Email is required"}, status=400)
-
-    user = User.objects.filter(email__iexact=email).first()
-
-    if not user:
-        return Response({"error": "User not found"}, status=404)
+    if isinstance(refresh_token, bytes):
+        refresh_token = refresh_token.decode()
 
     return Response({
-        "id": str(user.id),
-        "username": user.username,
-        "email": user.email,
-        "country": user.country,
-        "gender": user.gender,
-        "age": user.age
+        "access_token": access_token,
+        "refresh_token": refresh_token
     })
 
 
-# ================================
-# ✅ FORGOT PASSWORD
-# ================================
+
+#  REFRESH TOKEN 
 @swagger_auto_schema(
     method='post',
-    operation_description="Forgot password",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
-        required=['email'],
+        required=['refresh_token'],
         properties={
-            'email': openapi.Schema(type=openapi.TYPE_STRING),
+            'refresh_token': openapi.Schema(type=openapi.TYPE_STRING),
         },
     ),
 )
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def forgot_password(request):
-    email = request.data.get('email')
+def refresh_access_token(request):
+    token = request.data.get("refresh_token")
 
-    user = User.objects.filter(email__iexact=email).first()
+    if not token:
+        return Response({"error": "Refresh token required"}, status=400)
+
+    try:
+        payload = jwt.decode(
+            token.strip(),
+            SECRET_KEY,
+            algorithms=["HS256"],
+            leeway=30
+        )
+
+        if payload.get("type") != "refresh":
+            return Response({"error": "Invalid token type"}, status=401)
+
+        new_access = jwt.encode({
+            "user_id": payload["user_id"],
+            "type": "access",
+            "exp": datetime.datetime.utcnow() + ACCESS_TOKEN_LIFETIME
+        }, SECRET_KEY, algorithm="HS256")
+
+        if isinstance(new_access, bytes):
+            new_access = new_access.decode()
+
+        return Response({"access_token": new_access})
+
+    except jwt.ExpiredSignatureError:
+        return Response({"error": "Refresh token expired"}, status=401)
+
+    except Exception as e:
+        return Response({"error": "Invalid refresh token", "details": str(e)}, status=401)
+
+
+
+#  PROFILE
+@swagger_auto_schema(method='get', security=[{'Bearer': []}])
+@api_view(['GET'])
+@token_required
+def user_profile(request):
+    user = users_col.find_one({"_id": ObjectId(request.user_id)})
 
     if not user:
         return Response({"error": "User not found"}, status=404)
 
-    return Response({"message": "Password reset requested"})
+    return Response({
+        "username": user["username"],
+        "email": user["email"],
+        "country": user.get("country"),
+        "gender": user.get("gender"),
+        "age": user.get("age"),
+    })
 
 
-# ================================
-# ✅ RESET PASSWORD
-# ================================
+#  LOGOUT
+
+@swagger_auto_schema(method='post', security=[{'Bearer': []}])
+@api_view(['POST'])
+@token_required
+def logout(request):
+    auth_header = request.headers.get("Authorization")
+
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split()[1]
+    else:
+        token = auth_header.strip()
+
+    if not blacklist_col.find_one({"token": token}):
+        blacklist_col.insert_one({
+            "token": token,
+            "created_at": datetime.datetime.utcnow()
+        })
+
+    return Response({"message": "Logged out successfully"})
+
+
+
+#  RESET PASSWORD
 @swagger_auto_schema(
     method='post',
-    operation_description="Reset password",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         required=['email', 'new_password'],
@@ -218,20 +281,19 @@ def forgot_password(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def reset_password(request):
-    email = request.data.get('email')
-    new_password = request.data.get('new_password')
+    email = request.data.get("email")
+    new_password = request.data.get("new_password")
 
-    user = User.objects.filter(email__iexact=email).first()
+    user = users_col.find_one({"email": email.lower()})
 
     if not user:
         return Response({"error": "User not found"}, status=404)
 
-    hashed_password = bcrypt.hashpw(
-        new_password.encode('utf-8'),
-        bcrypt.gensalt()
-    ).decode('utf-8')
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
 
-    user.password = hashed_password
-    user.save()
+    users_col.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": hashed}}
+    )
 
     return Response({"message": "Password reset successful"})

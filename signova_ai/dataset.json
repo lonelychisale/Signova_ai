@@ -1,0 +1,37 @@
+[
+  {
+    "text": "help",
+    "video": "help.mp4",
+    "type": "word"
+  },
+  {
+    "text": "doctor",
+    "video": "doctor.mp4",
+    "type": "word"
+  },
+  {
+    "text": "pain",
+    "video": "pain.mp4",
+    "type": "word"
+  },
+  {
+    "text": "hello",
+    "video": "hello.mp4",
+    "type": "word"
+  },
+  {
+    "text": "i",
+    "video": "i.mp4",
+    "type": "word"
+  },
+  {
+    "text": "need",
+    "video": "need.mp4",
+    "type": "word"
+  },
+  {
+    "text": "i need help",
+    "video": ["i.mp4", "need.mp4", "help.mp4"],
+    "type": "phrase"
+  }
+]

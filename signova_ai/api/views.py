@@ -42,8 +42,6 @@ reset_tokens_col = db["password_reset_tokens"]
 def token_required(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        print(" TOKEN CHECK")
-
         auth_header = request.headers.get("Authorization")
 
         if not auth_header:
@@ -68,8 +66,7 @@ def token_required(view_func):
 
         except jwt.ExpiredSignatureError:
             return Response({"error": "Token expired"}, status=401)
-        except Exception as e:
-            print(" TOKEN ERROR:", str(e))
+        except Exception:
             return Response({"error": "Invalid token"}, status=401)
 
         return view_func(request, *args, **kwargs)
@@ -85,13 +82,19 @@ def token_required(view_func):
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         required=["username", "email", "password"],
+        properties={
+            "username": openapi.Schema(type=openapi.TYPE_STRING),
+            "email": openapi.Schema(type=openapi.TYPE_STRING),
+            "password": openapi.Schema(type=openapi.TYPE_STRING),
+            "country": openapi.Schema(type=openapi.TYPE_STRING),
+            "gender": openapi.Schema(type=openapi.TYPE_STRING),
+            "age": openapi.Schema(type=openapi.TYPE_INTEGER),
+        },
     ),
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def register_user(request):
-    print(" REGISTER")
-
     try:
         data = request.data
 
@@ -116,8 +119,6 @@ def register_user(request):
             }
         )
 
-        print(" User created")
-
         return Response(
             {
                 "user_id": str(result.inserted_id),
@@ -126,7 +127,6 @@ def register_user(request):
         )
 
     except Exception as e:
-        print(" REGISTER ERROR:", str(e))
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
 
@@ -134,12 +134,20 @@ def register_user(request):
 #  LOGIN
 
 
-@swagger_auto_schema(method="post")
+@swagger_auto_schema(
+    method="post",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["email", "password"],
+        properties={
+            "email": openapi.Schema(type=openapi.TYPE_STRING),
+            "password": openapi.Schema(type=openapi.TYPE_STRING),
+        },
+    ),
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_user(request):
-    print(" LOGIN")
-
     try:
         email = request.data.get("email")
         password = request.data.get("password")
@@ -176,12 +184,9 @@ def login_user(request):
             algorithm="HS256",
         )
 
-        print(" Login success")
-
         return Response({"access_token": access_token, "refresh_token": refresh_token})
 
-    except Exception as e:
-        print(" LOGIN ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
 
@@ -189,12 +194,19 @@ def login_user(request):
 #  REQUEST PASSWORD RESET
 
 
-@swagger_auto_schema(method="post")
+@swagger_auto_schema(
+    method="post",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["email"],
+        properties={
+            "email": openapi.Schema(type=openapi.TYPE_STRING),
+        },
+    ),
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def request_password_reset(request):
-    print(" PASSWORD RESET")
-
     try:
         email = request.data.get("email")
 
@@ -210,7 +222,6 @@ def request_password_reset(request):
             )
 
         otp = str(random.randint(100000, 999999))
-        print(" OTP:", otp)
 
         reset_tokens_col.insert_one(
             {
@@ -225,17 +236,14 @@ def request_password_reset(request):
         send_mail(
             subject="Password Reset Code",
             message=f"Your reset code is: {otp}",
-            from_email=settings.EMAIL_HOST_USER,  #  FIXED
+            from_email=settings.EMAIL_HOST_USER,  # ✅ FIX
             recipient_list=[email],
             fail_silently=False,
         )
 
-        print(" Email sent")
-
         return Response({"message": "Reset code sent successfully"})
 
     except Exception as e:
-        print(" RESET ERROR:", str(e))
         traceback.print_exc()
         return Response({"error": "Email failed", "details": str(e)}, status=500)
 
@@ -243,12 +251,20 @@ def request_password_reset(request):
 #  RESET PASSWORD
 
 
-@swagger_auto_schema(method="post")
+@swagger_auto_schema(
+    method="post",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=["token", "new_password"],
+        properties={
+            "token": openapi.Schema(type=openapi.TYPE_STRING),
+            "new_password": openapi.Schema(type=openapi.TYPE_STRING),
+        },
+    ),
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def reset_password(request):
-    print(" RESET PASSWORD")
-
     try:
         token = request.data.get("token")
         new_password = request.data.get("new_password")
@@ -275,12 +291,9 @@ def reset_password(request):
 
         reset_tokens_col.update_one({"token": token}, {"$set": {"used": True}})
 
-        print(" Password updated")
-
         return Response({"message": "Password reset successful"})
 
-    except Exception as e:
-        print(" RESET PASSWORD ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
 
@@ -292,8 +305,6 @@ def reset_password(request):
 @api_view(["GET"])
 @token_required
 def user_profile(request):
-    print(" PROFILE")
-
     try:
         user = users_col.find_one({"_id": ObjectId(request.user_id)})
 
@@ -310,8 +321,7 @@ def user_profile(request):
             }
         )
 
-    except Exception as e:
-        print(" PROFILE ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
 
@@ -323,10 +333,11 @@ def user_profile(request):
 @api_view(["POST"])
 @token_required
 def logout(request):
-    print(" LOGOUT")
-
     try:
         auth_header = request.headers.get("Authorization")
+
+        if not auth_header:
+            return Response({"error": "Authorization header missing"}, status=400)
 
         token = (
             auth_header.split()[1] if auth_header.startswith("Bearer ") else auth_header
@@ -339,8 +350,7 @@ def logout(request):
 
         return Response({"message": "Logged out successfully"})
 
-    except Exception as e:
-        print(" LOGOUT ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
 
@@ -349,12 +359,18 @@ def logout(request):
 
 engine = SignAIEngine()
 
+text_to_sign_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=["text"],
+    properties={
+        "text": openapi.Schema(type=openapi.TYPE_STRING),
+    },
+)
 
-@swagger_auto_schema(method="post")
+
+@swagger_auto_schema(method="post", request_body=text_to_sign_schema)
 @api_view(["POST"])
 def text_to_sign(request):
-    print(" AI REQUEST")
-
     try:
         text = request.data.get("text")
 
@@ -363,7 +379,6 @@ def text_to_sign(request):
 
         return Response({"input_text": text, "sign_videos": engine.convert(text)})
 
-    except Exception as e:
-        print(" AI ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)

@@ -157,13 +157,3 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "favourgchisale@gmail.com"
 EMAIL_HOST_PASSWORD = "wiha zmox rxve sost"
-
-# EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-# EMAIL_HOST = "smtp.office365.com"
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = "ess@r4hmw.org"
-# EMAIL_HOST_PASSWORD = "R@4hMW@2024"
-# EMAIL_USE_SSL = False
-# DEFAULT_FROM_EMAIL = "ess@r4hmw.org"
-# DJANGO_LOGLEVEL = INFO

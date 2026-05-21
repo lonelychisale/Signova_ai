@@ -236,7 +236,7 @@ def request_password_reset(request):
         send_mail(
             subject="Password Reset Code",
             message=f"Your reset code is: {otp}",
-            from_email=settings.EMAIL_HOST_USER,  # ✅ FIX
+            from_email=os.environ.get("EMAIL_HOST_USER"),
             recipient_list=[email],
             fail_silently=False,
         )

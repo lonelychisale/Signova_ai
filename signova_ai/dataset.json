@@ -33,5 +33,116 @@
     "text": "i need help",
     "video": ["i.mp4", "need.mp4", "help.mp4"],
     "type": "phrase"
-  }
+  },
+   {
+    "text": "angry",
+    "video": "Angry.mp4",
+    "type": "word"
+  },
+    {
+      "text": "sad",
+      "video": "Sad.mp4",
+      "type": "word"
+    },
+    {
+      "text": "happy",
+      "video": "Happy.mp4",
+      "type": "word"
+    },
+      {
+        "text": "tired",
+        "video": "Tired.mp4",
+        "type": "word"
+      } ,
+      {
+        "text": "excited",
+        "video": "Excited.mp4",
+        "type": "word"
+      },
+      {
+        "text": "bored",
+        "video": "Bored.mp4",
+        "type": "word"
+      },
+      {
+        "text": "scared",
+        "video": "Scared.mp4",
+        "type": "word"
+      },
+      {
+        "text": "nervous",
+        "video": "Nervous.mp4",
+        "type": "word"
+      },
+      {
+        "text": "confused",
+        "video": "Confused.mp4",
+        "type": "word"
+      },
+      {
+        "text": "surprised",
+        "video": "Surprised.mp4",
+        "type": "word"
+      },
+      {
+        "text": "calm",
+        "video": "Calm.mp4",
+        "type": "word"
+      },
+      {
+        "text": "frustrated",
+        "video": "Frustrated.mp4",
+        "type": "word"
+      },
+      {
+        "text": "proud",
+        "video": "Proud.mp4",
+        "type": "word"
+      },
+      {
+        "text": "lonely",
+        "video": "Lonely.mp4",
+        "type": "word"
+      },
+      {
+        "text": "grateful",
+        "video": "Grateful.mp4",
+        "type": "word"
+      },
+      {
+        "text": "hopeful",
+        "video": "Hopeful.mp4",
+        "type": "word"
+      },
+      {
+        "text": "ashamed",
+        "video": "Ashamed.mp4",
+        "type": "word"
+      },
+      {
+        "text": "guilty",
+        "video": "Guilty.mp4",
+        "type": "word"
+      },
+      {
+        "text": "embarrassed",
+        "video": "Embarrassed.mp4",
+        "type": "word"
+      },
+      {
+        "text": "relieved",
+        "video": "Relieved.mp4",
+        "type": "word"
+      },
+      {
+        "text": "jealous",
+        "video": "Jealous.mp4",
+        "type": "word"
+      },
+      {
+        "text": "sympathetic",
+        "video": "Sympathetic.mp4",
+        "type": "word"
+      }
+
 ]

@@ -248,6 +248,10 @@ def request_password_reset(request):
         return Response({"error": "Email failed", "details": str(e)}, status=500)
 
 
+
+
+
+
 #  RESET PASSWORD
 
 
@@ -369,6 +373,19 @@ text_to_sign_schema = openapi.Schema(
 
 
 @swagger_auto_schema(method="post", request_body=text_to_sign_schema)
+# @api_view(["POST"])
+# def text_to_sign(request):
+#     try:
+#         text = request.data.get("text")
+
+#         if not text:
+#             return Response({"error": "Text required"}, status=400)
+
+#         return Response({"input_text": text, "sign_videos": engine.convert(text)})
+
+#     except Exception:
+#         traceback.print_exc()
+#         return Response({"error": "Internal server error"}, status=500)
 @api_view(["POST"])
 def text_to_sign(request):
     try:
@@ -377,7 +394,17 @@ def text_to_sign(request):
         if not text:
             return Response({"error": "Text required"}, status=400)
 
-        return Response({"input_text": text, "sign_videos": engine.convert(text)})
+        videos = engine.convert(text)  # ["hello.mp4", "world.mp4"]
+
+        video_urls = [
+            request.build_absolute_uri(f"/media/Signs/{video}")
+            for video in videos
+        ]
+
+        return Response({
+            "input_text": text,
+            "sign_videos": video_urls
+        })
 
     except Exception:
         traceback.print_exc()

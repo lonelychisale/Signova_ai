@@ -1,7 +1,2 @@
 .env
 */__pycache__
-
-media/
-*.mp4
-*.avi
-*.mov

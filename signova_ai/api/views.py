@@ -518,42 +518,31 @@ model = whisper.load_model("tiny")
     ],
     consumes=["multipart/form-data"],
 )
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def whisper_transcribe(request):
     try:
-        #  Get uploaded file
         audio_file = request.FILES.get("audio")
-        lang = request.data.get("lang")
 
         if not audio_file:
-            return Response({"error": "Audio file is required"}, status=400)
-       
-        #  Save safely using temp file
+            return Response({"error": "Audio required"}, status=400)
+
+        # ✅ Save file safely
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             for chunk in audio_file.chunks():
                 temp_file.write(chunk)
-
             temp_path = temp_file.name
 
-        print(" File saved at:", temp_path)
+        # ✅ Force English output
+        result = model.transcribe(temp_path, task="translate")
 
-        #  Transcribe (FREE local whisper)
-        result = model.transcribe(temp_path)
         text = result["text"]
 
-        #  Optional translation
-        translated = None
-        if lang:
-            result_translate = model.transcribe(temp_path, task="translate")
-            translated = result_translate["text"]
-
-        #  Clean up
         os.remove(temp_path)
 
         return Response({
-            "text": text,
-            "translated": translated
+            "text": text
         })
 
     except Exception as e:

@@ -228,25 +228,25 @@ def logout(request):
     return Response({"message": "Logged out successfully"})
 
 
-# ================= TEXT → SIGN =================
-text_schema = openapi.Schema(
-    type=openapi.TYPE_OBJECT,
-    required=["text"]
-)
+# # ================= TEXT → SIGN =================
+# text_schema = openapi.Schema(
+#     type=openapi.TYPE_OBJECT,
+#     required=["text"]
+# )
 
-@swagger_auto_schema(method="post", request_body=text_schema)
-@api_view(["POST"])
-def text_to_sign(request):
-    text = request.data.get("text")
+# @swagger_auto_schema(method="post", request_body=text_schema)
+# @api_view(["POST"])
+# def text_to_sign(request):
+#     text = request.data.get("text")
 
-    videos = engine.convert(text)
+#     videos = engine.convert(text)
 
-    urls = [
-        request.build_absolute_uri(f"/media/Signs/{v}")
-        for v in videos
-    ]
+#     urls = [
+#         request.build_absolute_uri(f"/media/Signs/{v}")
+#         for v in videos
+#     ]
 
-    return Response({"text": text, "videos": urls})
+#     return Response({"text": text, "videos": urls})
 
 
 # ================= WHISPER =================

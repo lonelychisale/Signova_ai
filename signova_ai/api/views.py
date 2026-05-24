@@ -11,7 +11,7 @@ from bson.objectid import ObjectId
 from functools import wraps
 
 from .db import db
-from .ai_engine import SignAIEngine
+# from .ai_engine import SignAIEngine
 
 import bcrypt
 import jwt
@@ -30,7 +30,7 @@ except:
 users_col = db["users"]
 blacklist_col = db["blacklist"]
 
-engine = SignAIEngine()
+# engine = SignAIEngine()
 model = None
 ACCESS_TOKEN_LIFETIME = datetime.timedelta(minutes=60)
 

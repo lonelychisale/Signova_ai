@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# ✅ Install system dependencies (NOW includes git ✅)
+# ✅ Install system tools
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
@@ -11,10 +11,11 @@ WORKDIR /app
 
 COPY . .
 
-# ✅ Upgrade tools
-RUN pip install --upgrade pip setuptools wheel
+# ✅ VERY IMPORTANT: install build tools FIRST (separate step)
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir setuptools==68.0.0 wheel
 
-# ✅ Install dependencies
+# ✅ Now install project dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ✅ Run app

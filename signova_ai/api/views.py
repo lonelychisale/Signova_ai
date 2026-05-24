@@ -2,7 +2,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.core.mail import send_mail
-from django.conf import settings
 
 from .db import db
 
@@ -12,6 +11,7 @@ import datetime
 import os
 import random
 import traceback
+import uuid
 
 from bson.objectid import ObjectId
 from functools import wraps
@@ -22,10 +22,47 @@ from drf_yasg import openapi
 from .ai_engine import SignAIEngine
 
 from dotenv import load_dotenv
+from openai import OpenAI
+
+
+import whisper
+
+#  Load model once (important!)
+model = whisper.load_model("tiny")
+
+
 
 load_dotenv()
 
-#  CONFIG
+
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import AllowAny
+# from rest_framework.response import Response
+# from django.core.mail import send_mail
+# from django.conf import settings
+
+# from .db import db
+
+# import bcrypt
+# import jwt
+# import datetime
+# import os
+# import random
+# import traceback
+
+# from bson.objectid import ObjectId
+# from functools import wraps
+
+# from drf_yasg.utils import swagger_auto_schema
+# from drf_yasg import openapi
+
+# from .ai_engine import SignAIEngine
+
+# from dotenv import load_dotenv
+
+# load_dotenv()
+
+# #  CONFIG
 
 SECRET_KEY = os.getenv("SECRET_KEY") or "fallback_secret_key"
 
@@ -35,7 +72,7 @@ REFRESH_TOKEN_LIFETIME = datetime.timedelta(days=7)
 users_col = db["users"]
 blacklist_col = db["blacklist"]
 reset_tokens_col = db["password_reset_tokens"]
-
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 #  TOKEN DECORATOR
 
 
@@ -255,6 +292,15 @@ def request_password_reset(request):
 #  RESET PASSWORD
 
 
+reset_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=["email", "new_password"],
+    properties={
+        "email": openapi.Schema(type=openapi.TYPE_STRING),
+        "new_password": openapi.Schema(type=openapi.TYPE_STRING),
+    },
+)
+
 @swagger_auto_schema(
     method="post",
     request_body=openapi.Schema(
@@ -300,6 +346,36 @@ def reset_password(request):
     except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
+
+
+
+# ================= RESET PASSWORD =================
+
+@swagger_auto_schema(method="post", request_body=reset_schema)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reset_password(request):
+    try:
+        email = request.data.get("email")
+        new_password = request.data.get("new_password")
+
+        user = users_col.find_one({"email": email})
+
+        if not user:
+            return Response({"error": "User not found"}, status=404)
+
+        hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+
+        users_col.update_one(
+            {"_id": user["_id"]}, {"$set": {"password": hashed}}
+        )
+
+        return Response({"message": "Password updated"})
+
+    except Exception:
+        traceback.print_exc()
+        return Response({"error": "Server error"}, status=500)
+
 
 
 #  PROFILE
@@ -409,3 +485,77 @@ def text_to_sign(request):
     except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
+
+
+
+
+
+import whisper
+import tempfile
+import os
+import traceback
+
+#  Load model once (important)
+model = whisper.load_model("tiny")
+
+@swagger_auto_schema(
+    method="post",
+    manual_parameters=[
+        openapi.Parameter(
+            name="audio",
+            in_=openapi.IN_FORM,
+            type=openapi.TYPE_FILE,
+            required=True,
+            description="Upload audio file (.wav, .mp3)"
+        ),
+        openapi.Parameter(
+            name="lang",
+            in_=openapi.IN_FORM,
+            type=openapi.TYPE_STRING,
+            required=False,
+            description="Target language (optional)"
+        ),
+    ],
+    consumes=["multipart/form-data"],
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def whisper_transcribe(request):
+    try:
+        #  Get uploaded file
+        audio_file = request.FILES.get("audio")
+        lang = request.data.get("lang")
+
+        if not audio_file:
+            return Response({"error": "Audio file is required"}, status=400)
+       
+        #  Save safely using temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+            for chunk in audio_file.chunks():
+                temp_file.write(chunk)
+
+            temp_path = temp_file.name
+
+        print(" File saved at:", temp_path)
+
+        #  Transcribe (FREE local whisper)
+        result = model.transcribe(temp_path)
+        text = result["text"]
+
+        #  Optional translation
+        translated = None
+        if lang:
+            result_translate = model.transcribe(temp_path, task="translate")
+            translated = result_translate["text"]
+
+        #  Clean up
+        os.remove(temp_path)
+
+        return Response({
+            "text": text,
+            "translated": translated
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)

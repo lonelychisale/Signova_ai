@@ -7,7 +7,8 @@ urlpatterns = [
     # path('refresh/', views.refresh_access_token),
     path("profile/", views.user_profile),
     path("logout/", views.logout),
-    path("request-password-reset/", views.request_password_reset),
+    # path("request-password-reset/", views.request_password_reset),
     path("reset-password/", views.reset_password),
-    path("text-to-sign/", views.text_to_sign),
+    path("speech-to-text/", views.whisper_transcribe),
+    # path("text-to-sign/", views.text_to_sign),
 ]

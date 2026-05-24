@@ -1,8 +1,9 @@
 FROM python:3.10-slim
 
-# ✅ Install minimal dependencies + ffmpeg
+# ✅ Install system dependencies (NOW includes git ✅)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    git \
     build-essential \
  && rm -rf /var/lib/apt/lists/*
 
@@ -13,7 +14,7 @@ COPY . .
 # ✅ Upgrade tools
 RUN pip install --upgrade pip setuptools wheel
 
-# ✅ Install dependencies (no cache to reduce size)
+# ✅ Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ✅ Run app

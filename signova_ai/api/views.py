@@ -271,8 +271,10 @@ def whisper_transcribe(request):
             return Response({"text": "Fallback: whisper unavailable"})
 
         if model is None:
+            log_memory()
             print("Loading Whisper model...")
             model = whisper.load_model("tiny")
+            log_memory()
 
         audio_file = request.FILES.get("audio")
 

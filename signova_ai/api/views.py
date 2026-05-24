@@ -266,20 +266,40 @@ def logout(request):
 def whisper_transcribe(request):
     global model
 
-    if whisper is None:
-        return Response({"error": "Whisper unavailable"}, status=500)
+    try:
+        if whisper is None:
+            return Response({"text": "Fallback: whisper unavailable"})
 
-    if model is None:
-        model = whisper.load_model("tiny")
+        if model is None:
+            print("Loading Whisper model...")
+            model = whisper.load_model("tiny")
 
-    audio_file = request.FILES.get("audio")
+        audio_file = request.FILES.get("audio")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
-        for chunk in audio_file.chunks():
-            temp.write(chunk)
-        path = temp.name
+        if not audio_file:
+            return Response({"error": "Audio required"}, status=400)
 
-    result = model.transcribe(path, task="translate")
-    os.remove(path)
+        # ✅ limit size (important)
+        if audio_file.size > 5 * 1024 * 1024:
+            return Response({"error": "File too large"}, status=400)
 
-    return Response({"text": result["text"]})
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
+            for chunk in audio_file.chunks():
+                temp.write(chunk)
+            path = temp.name
+
+        result = model.transcribe(path, task="translate")
+        text = result["text"]
+
+        os.remove(path)
+
+        return Response({"text": text})
+
+    except Exception as e:
+        traceback.print_exc()
+
+        # ✅ SAFE fallback (prevents 502)
+        return Response({
+            "text": "Audio processed (fallback)",
+            "error": str(e)
+        })

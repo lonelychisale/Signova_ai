@@ -15,4 +15,4 @@ tqdm==4.66.1
 
 numpy==1.24.4
 torch==2.0.1
-openai-whisper==20231117
+git+https://github.com/openai/whisper.git

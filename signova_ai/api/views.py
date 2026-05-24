@@ -34,6 +34,15 @@ blacklist_col = db["blacklist"]
 model = None
 ACCESS_TOKEN_LIFETIME = datetime.timedelta(minutes=60)
 
+import psutil
+def log_memory():
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info().rss / 1024 / 1024  # convert to MB
+    print(f"🔵 Memory used: {mem:.2f} MB")
+
+
+
+
 # ================= TOKEN =================
 def token_required(view_func):
     @wraps(view_func)

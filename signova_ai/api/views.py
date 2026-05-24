@@ -30,8 +30,9 @@ import whisper
 import tempfile
 
 #  Load model once (important!)
-model = whisper.load_model("tiny")
-
+print("Loading model...")
+model = whisper.load_model("tiny", device="cpu")
+print("Model loaded ✅")
 
 
 load_dotenv()

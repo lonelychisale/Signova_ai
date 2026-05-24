@@ -27,6 +27,8 @@ from openai import OpenAI
 
 import whisper
 
+import tempfile
+
 #  Load model once (important!)
 model = whisper.load_model("tiny")
 
@@ -490,13 +492,9 @@ def text_to_sign(request):
 
 
 
-import whisper
-import tempfile
-import os
-import traceback
 
-#  Load model once (important)
-model = whisper.load_model("tiny")
+
+
 
 @swagger_auto_schema(
     method="post",
@@ -518,31 +516,42 @@ model = whisper.load_model("tiny")
     ],
     consumes=["multipart/form-data"],
 )
-
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def whisper_transcribe(request):
     try:
+        #  Get uploaded file
         audio_file = request.FILES.get("audio")
-
+        lang = request.data.get("lang")
+        lang = 'en' if not lang else lang  # default to English
         if not audio_file:
-            return Response({"error": "Audio required"}, status=400)
-
-        # ✅ Save file safely
+            return Response({"error": "Audio file is required"}, status=400)
+       
+        #  Save safely using temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
             for chunk in audio_file.chunks():
                 temp_file.write(chunk)
+
             temp_path = temp_file.name
 
-        # ✅ Force English output
-        result = model.transcribe(temp_path, task="translate")
+        print(" File saved at:", temp_path)
 
+        #  Transcribe (FREE local whisper)
+        result = model.transcribe(temp_path)
         text = result["text"]
 
+        #  Optional translation
+        translated = None
+        if lang:
+            result_translate = model.transcribe(temp_path, task="translate")
+            translated = result_translate["text"]
+
+        #  Clean up
         os.remove(temp_path)
 
         return Response({
-            "text": text
+            "text": text,
+            "translated": translated
         })
 
     except Exception as e:

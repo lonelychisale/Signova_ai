@@ -1,17 +1,19 @@
 FROM python:3.10
 
-# ✅ install ffmpeg (THIS is what we need)
-RUN apt-get update && apt-get install -y ffmpeg
+# ✅ Install system dependencies (FFmpeg + build tools)
+RUN apt-get update && apt-get install -y ffmpeg build-essential
 
-# working directory
+# ✅ Set working directory
 WORKDIR /app
 
-# copy project
+# ✅ Copy all project files into container
 COPY . .
 
-# install python deps
-RUN pip install --upgrade pip
+# ✅ Upgrade pip + setuptools + wheel (FIXES pkg_resources error)
+RUN pip install --upgrade pip setuptools wheel
+
+# ✅ Install Python dependencies
 RUN pip install -r requirements.txt
 
-# run server
+# ✅ Start Django app with Gunicorn
 CMD ["gunicorn", "signova_ai.wsgi:application", "--bind", "0.0.0.0:$PORT"]

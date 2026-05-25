@@ -11,7 +11,6 @@ from bson.objectid import ObjectId
 from functools import wraps
 
 from .db import db
-# from .ai_engine import SignAIEngine
 
 import bcrypt
 import jwt
@@ -19,31 +18,66 @@ import datetime
 import traceback
 import tempfile
 import os
+import psutil
 
-# ✅ safe whisper
+# =========================
+# FASTER WHISPER
+# =========================
 try:
-    import whisper
-except:
-    whisper = None
+    from faster_whisper import WhisperModel
+except Exception as e:
+    print("Faster Whisper import failed:", e)
+    WhisperModel = None
 
-# ================= GLOBAL =================
+# =========================
+# DATABASE
+# =========================
 users_col = db["users"]
 blacklist_col = db["blacklist"]
 
-# engine = SignAIEngine()
+# =========================
+# GLOBALS
+# =========================
 model = None
+
 ACCESS_TOKEN_LIFETIME = datetime.timedelta(minutes=60)
 
-import psutil
+# =========================
+# MEMORY LOGGER
+# =========================
 def log_memory():
     process = psutil.Process(os.getpid())
-    mem = process.memory_info().rss / 1024 / 1024  # convert to MB
-    print(f"🔵 Memory used: {mem:.2f} MB")
+    mem = process.memory_info().rss / 1024 / 1024
+    print(f"🔵 Memory Used: {mem:.2f} MB")
 
 
+# =========================
+# LOAD WHISPER MODEL
+# =========================
+def get_whisper_model():
+    global model
+
+    if model is None:
+        log_memory()
+
+        print("🔵 Loading Faster Whisper model...")
+
+        model = WhisperModel(
+            "tiny",
+            device="cpu",
+            compute_type="int8"
+        )
+
+        print("✅ Faster Whisper loaded")
+
+        log_memory()
+
+    return model
 
 
-# ================= TOKEN =================
+# =========================
+# TOKEN DECORATOR
+# =========================
 def token_required(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
@@ -65,6 +99,13 @@ def token_required(view_func):
                 token = auth_header.split(" ")[1]
             else:
                 token = auth_header
+
+            # blacklist check
+            if blacklist_col.find_one({"token": token}):
+                return Response(
+                    {"error": "Token blacklisted"},
+                    status=401
+                )
 
             payload = jwt.decode(
                 token,
@@ -99,14 +140,19 @@ def token_required(view_func):
 
     return wrapper
 
-# ================= HEALTH =================
+
+# =========================
+# HEALTH CHECK
+# =========================
 @swagger_auto_schema(method="get")
 @api_view(["GET"])
 def health_check(request):
     return Response({"status": "ok"})
 
 
-# ================= REGISTER =================
+# =========================
+# REGISTER
+# =========================
 register_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     required=["email", "password"],
@@ -123,32 +169,58 @@ register_schema = openapi.Schema(
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def register_user(request):
-    data = request.data
 
-    email = data.get("email")
-    password = data.get("password")
+    try:
+        data = request.data
 
-    if not email or not password:
-        return Response({"error": "Missing fields"}, status=400)
+        email = data.get("email")
+        password = data.get("password")
 
-    if users_col.find_one({"email": email.lower()}):
-        return Response({"error": "Email exists"}, status=400)
+        if not email or not password:
+            return Response(
+                {"error": "Missing fields"},
+                status=400
+            )
 
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        email = email.lower()
 
-    user = users_col.insert_one({
-        "email": email.lower(),
-        "password": hashed,
-        "country": data.get("country"),
-        "gender": data.get("gender"),
-        "age": data.get("age"),
-        "created_at": datetime.datetime.utcnow()
-    })
+        if users_col.find_one({"email": email}):
+            return Response(
+                {"error": "Email already exists"},
+                status=400
+            )
 
-    return Response({"user_id": str(user.inserted_id)})
+        hashed = bcrypt.hashpw(
+            password.encode(),
+            bcrypt.gensalt()
+        )
+
+        user = users_col.insert_one({
+            "email": email,
+            "password": hashed,
+            "country": data.get("country"),
+            "gender": data.get("gender"),
+            "age": data.get("age"),
+            "created_at": datetime.datetime.utcnow()
+        })
+
+        return Response({
+            "message": "User registered successfully",
+            "user_id": str(user.inserted_id)
+        })
+
+    except Exception:
+        traceback.print_exc()
+
+        return Response(
+            {"error": "Internal server error"},
+            status=500
+        )
 
 
-# ================= LOGIN =================
+# =========================
+# LOGIN
+# =========================
 login_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     required=["email", "password"],
@@ -162,103 +234,194 @@ login_schema = openapi.Schema(
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_user(request):
-    email = request.data.get("email").lower()
-    password = request.data.get("password")
 
-    user = users_col.find_one({"email": email})
+    try:
+        email = request.data.get("email")
+        password = request.data.get("password")
 
-    if not user or not bcrypt.checkpw(password.encode(), user["password"]):
-        return Response({"error": "Invalid credentials"}, status=401)
+        if not email or not password:
+            return Response(
+                {"error": "Email and password required"},
+                status=400
+            )
 
-    token = jwt.encode(
-        {
-            "user_id": str(user["_id"]),
-            "exp": datetime.datetime.utcnow() + ACCESS_TOKEN_LIFETIME,
-        },
-        settings.SECRET_KEY,
-        algorithm="HS256"
-    )
+        email = email.lower()
 
-    return Response({"access_token": token})
+        user = users_col.find_one({"email": email})
+
+        if not user:
+            return Response(
+                {"error": "Invalid credentials"},
+                status=401
+            )
+
+        if not bcrypt.checkpw(password.encode(), user["password"]):
+            return Response(
+                {"error": "Invalid credentials"},
+                status=401
+            )
+
+        token = jwt.encode(
+            {
+                "user_id": str(user["_id"]),
+                "exp": datetime.datetime.utcnow()
+                + ACCESS_TOKEN_LIFETIME,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256"
+        )
+
+        return Response({
+            "access_token": token
+        })
+
+    except Exception:
+        traceback.print_exc()
+
+        return Response(
+            {"error": "Internal server error"},
+            status=500
+        )
 
 
-# ================= RESET PASSWORD =================
+# =========================
+# RESET PASSWORD
+# =========================
 reset_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     required=["email", "new_password"],
+    properties={
+        "email": openapi.Schema(type=openapi.TYPE_STRING),
+        "new_password": openapi.Schema(type=openapi.TYPE_STRING),
+    }
 )
 
 @swagger_auto_schema(method="post", request_body=reset_schema)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def reset_password(request):
-    email = request.data.get("email")
-    new_password = request.data.get("new_password")
 
-    user = users_col.find_one({"email": email.lower()})
+    try:
+        email = request.data.get("email")
+        new_password = request.data.get("new_password")
 
-    if not user:
-        return Response({"error": "User not found"}, status=404)
+        if not email or not new_password:
+            return Response(
+                {"error": "Email and password required"},
+                status=400
+            )
 
-    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+        email = email.lower()
 
-    users_col.update_one(
-        {"_id": user["_id"]},
-        {"$set": {"password": hashed}}
-    )
+        user = users_col.find_one({"email": email})
 
-    return Response({"message": "Password updated"})
+        if not user:
+            return Response(
+                {"error": "User not found"},
+                status=404
+            )
+
+        hashed = bcrypt.hashpw(
+            new_password.encode(),
+            bcrypt.gensalt()
+        )
+
+        users_col.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"password": hashed}}
+        )
+
+        return Response({
+            "message": "Password updated"
+        })
+
+    except Exception:
+        traceback.print_exc()
+
+        return Response(
+            {"error": "Internal server error"},
+            status=500
+        )
 
 
-# ================= PROFILE =================
-@swagger_auto_schema(method="get", security=[{"Bearer": []}])
+# =========================
+# PROFILE
+# =========================
+@swagger_auto_schema(
+    method="get",
+    security=[{"Bearer": []}]
+)
 @api_view(["GET"])
 @token_required
 def user_profile(request):
-    user = users_col.find_one({"_id": ObjectId(request.user_id)})
 
-    return Response({
-        "email": user.get("email"),
-        "country": user.get("country"),
-        "gender": user.get("gender"),
-        "age": user.get("age"),
-    })
+    try:
+        user = users_col.find_one({
+            "_id": ObjectId(request.user_id)
+        })
+
+        if not user:
+            return Response(
+                {"error": "User not found"},
+                status=404
+            )
+
+        return Response({
+            "email": user.get("email"),
+            "country": user.get("country"),
+            "gender": user.get("gender"),
+            "age": user.get("age"),
+        })
+
+    except Exception:
+        traceback.print_exc()
+
+        return Response(
+            {"error": "Internal server error"},
+            status=500
+        )
 
 
-# ================= LOGOUT =================
-@swagger_auto_schema(method="post", security=[{"Bearer": []}])
+# =========================
+# LOGOUT
+# =========================
+@swagger_auto_schema(
+    method="post",
+    security=[{"Bearer": []}]
+)
 @api_view(["POST"])
 @token_required
 def logout(request):
-    token = request.headers.get("Authorization")
 
-    blacklist_col.insert_one({"token": token})
+    try:
+        auth_header = request.headers.get("Authorization")
 
-    return Response({"message": "Logged out successfully"})
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        else:
+            token = auth_header
+
+        blacklist_col.insert_one({
+            "token": token,
+            "created_at": datetime.datetime.utcnow()
+        })
+
+        return Response({
+            "message": "Logged out successfully"
+        })
+
+    except Exception:
+        traceback.print_exc()
+
+        return Response(
+            {"error": "Internal server error"},
+            status=500
+        )
 
 
-# # ================= TEXT → SIGN =================
-# text_schema = openapi.Schema(
-#     type=openapi.TYPE_OBJECT,
-#     required=["text"]
-# )
-
-# @swagger_auto_schema(method="post", request_body=text_schema)
-# @api_view(["POST"])
-# def text_to_sign(request):
-#     text = request.data.get("text")
-
-#     videos = engine.convert(text)
-
-#     urls = [
-#         request.build_absolute_uri(f"/media/Signs/{v}")
-#         for v in videos
-#     ]
-
-#     return Response({"text": text, "videos": urls})
-
-
-# ================= WHISPER =================
+# =========================
+# WHISPER TRANSCRIBE
+# =========================
 @swagger_auto_schema(
     method="post",
     manual_parameters=[
@@ -266,51 +429,68 @@ def logout(request):
             "audio",
             openapi.IN_FORM,
             type=openapi.TYPE_FILE,
-            required=True
+            required=True,
+            description="Upload audio file"
         )
     ],
     consumes=["multipart/form-data"]
 )
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def whisper_transcribe(request):
-    global model
 
     try:
-        if whisper is None:
-            return Response({"text": "Fallback: whisper unavailable"})
-
-        if model is None:
-            log_memory()
-            print("Loading Whisper model...")
-            model = whisper.load_model("tiny")
-            log_memory()
+        if WhisperModel is None:
+            return Response(
+                {"error": "Whisper unavailable"},
+                status=500
+            )
 
         audio_file = request.FILES.get("audio")
 
         if not audio_file:
-            return Response({"error": "Audio required"}, status=400)
+            return Response(
+                {"error": "Audio required"},
+                status=400
+            )
 
-        # ✅ limit size (important)
+        # 5MB limit
         if audio_file.size > 5 * 1024 * 1024:
-            return Response({"error": "File too large"}, status=400)
+            return Response(
+                {"error": "File too large"},
+                status=400
+            )
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".wav"
+        ) as temp:
+
             for chunk in audio_file.chunks():
                 temp.write(chunk)
+
             path = temp.name
 
-        result = model.transcribe(path, task="translate")
-        text = result["text"]
+        model = get_whisper_model()
+
+        segments, info = model.transcribe(
+            path,
+            task="translate"
+        )
+
+        text = " ".join(
+            [segment.text for segment in segments]
+        )
 
         os.remove(path)
 
-        return Response({"text": text})
+        return Response({
+            "text": text
+        })
 
     except Exception as e:
         traceback.print_exc()
 
-        # ✅ SAFE fallback (prevents 502)
         return Response({
-            "text": "Audio processed (fallback)",
             "error": str(e)
-        })
+        }, status=500)

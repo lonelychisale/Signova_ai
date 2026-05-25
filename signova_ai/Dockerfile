@@ -1,6 +1,5 @@
 FROM python:3.10-slim
 
-# ✅ Install system tools
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
@@ -11,12 +10,10 @@ WORKDIR /app
 
 COPY . .
 
-# ✅ VERY IMPORTANT: install build tools FIRST (separate step)
 RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir setuptools==68.0.0 wheel
 
-# ✅ Now install project dependencies
+RUN pip install --no-cache-dir setuptools==69.5.1 wheel
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ✅ Run app
-CMD ["gunicorn", "signova_ai.wsgi:application", "--bind", "0.0.0.0:$PORT"]
+CMD ["sh", "-c", "gunicorn signova_ai.wsgi:application --bind 0.0.0.0:$PORT"]

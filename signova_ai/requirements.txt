@@ -12,7 +12,7 @@ python-dotenv==1.0.0
 requests==2.31.0
 pillow==10.0.0
 tqdm==4.66.1
-
+django-environ
 numpy==1.24.4
 
 setuptools==69.5.1

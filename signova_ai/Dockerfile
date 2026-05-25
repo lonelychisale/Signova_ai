@@ -16,4 +16,4 @@ RUN pip install --no-cache-dir setuptools==69.5.1 wheel
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD gunicorn signova_ai.wsgi:application --bind 0.0.0.0:$PORT
+CMD ["sh", "-c", "gunicorn signova_ai.wsgi:application --bind 0.0.0.0:$PORT"]

@@ -19,7 +19,9 @@ import traceback
 import tempfile
 import os
 import psutil
+HF_TOKEN = os.getenv("HF_TOKEN")
 
+HF_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-small"
 # =========================
 # FASTER WHISPER
 # =========================
@@ -421,78 +423,131 @@ def logout(request):
         )
 
 
+# # =========================
+# # WHISPER TRANSCRIBE
+# # =========================
+# @swagger_auto_schema(
+#     method="post",
+#     manual_parameters=[
+#         openapi.Parameter(
+#             "audio",
+#             openapi.IN_FORM,
+#             type=openapi.TYPE_FILE,
+#             required=True,
+#             description="Upload audio file"
+#         )
+#     ],
+#     consumes=["multipart/form-data"]
+# )
+# @api_view(["POST"])
+# @permission_classes([AllowAny])
+# def whisper_transcribe(request):
+
+#     try:
+#         if WhisperModel is None:
+#             return Response(
+#                 {"error": "Whisper unavailable"},
+#                 status=500
+#             )
+
+#         audio_file = request.FILES.get("audio")
+
+#         if not audio_file:
+#             return Response(
+#                 {"error": "Audio required"},
+#                 status=400
+#             )
+
+#         # 5MB limit
+#         if audio_file.size > 5 * 1024 * 1024:
+#             return Response(
+#                 {"error": "File too large"},
+#                 status=400
+#             )
+
+#         with tempfile.NamedTemporaryFile(
+#             delete=False,
+#             suffix=".wav"
+#         ) as temp:
+
+#             for chunk in audio_file.chunks():
+#                 temp.write(chunk)
+
+#             path = temp.name
+
+#         model = get_whisper_model()
+
+#         segments, info = model.transcribe(
+#             path,
+#             task="translate"
+#         )
+
+#         text = " ".join(
+#             [segment.text for segment in segments]
+#         )
+
+#         os.remove(path)
+
+#         return Response({
+#             "text": text
+#         })
+
+#     except Exception as e:
+#         traceback.print_exc()
+
+#         return Response({
+#             "error": str(e)
+#         }, status=500)
+
+import requests
 # =========================
-# WHISPER TRANSCRIBE
+# SPEECH TO TEXT - GROQ WHISPER (Best Current Option)
 # =========================
+GROQ_API_KEY = "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"   # ← Put your Groq key here
+
 @swagger_auto_schema(
     method="post",
-    manual_parameters=[
-        openapi.Parameter(
-            "audio",
-            openapi.IN_FORM,
-            type=openapi.TYPE_FILE,
-            required=True,
-            description="Upload audio file"
-        )
-    ],
+    manual_parameters=[openapi.Parameter("audio", openapi.IN_FORM, type=openapi.TYPE_FILE, required=True)],
     consumes=["multipart/form-data"]
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def whisper_transcribe(request):
-
     try:
-        if WhisperModel is None:
-            return Response(
-                {"error": "Whisper unavailable"},
-                status=500
-            )
-
         audio_file = request.FILES.get("audio")
-
         if not audio_file:
-            return Response(
-                {"error": "Audio required"},
-                status=400
-            )
+            return Response({"error": "Audio file required"}, status=400)
 
-        # 5MB limit
-        if audio_file.size > 5 * 1024 * 1024:
-            return Response(
-                {"error": "File too large"},
-                status=400
-            )
+        if audio_file.size > 25 * 1024 * 1024:   # Groq supports larger files
+            return Response({"error": "File too large (max 25MB)"}, status=400)
 
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".wav"
-        ) as temp:
+        audio_bytes = audio_file.read()
 
-            for chunk in audio_file.chunks():
-                temp.write(chunk)
+        files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
+        
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}"
+        }
 
-            path = temp.name
-
-        model = get_whisper_model()
-
-        segments, info = model.transcribe(
-            path,
-            task="translate"
+        response = requests.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers=headers,
+            files=files,
+            data={"model": "whisper-large-v3-turbo", "response_format": "json"},
+            timeout=60
         )
 
-        text = " ".join(
-            [segment.text for segment in segments]
-        )
+        if response.status_code != 200:
+            return Response({
+                "error": "Groq API Error",
+                "details": response.text
+            }, status=response.status_code)
 
-        os.remove(path)
-
+        result = response.json()
         return Response({
-            "text": text
+            "text": result.get("text", "").strip()
         })
 
     except Exception as e:
         traceback.print_exc()
-
-        return Response({
-            "error": str(e)
-        }, status=500)
+        return Response({"error": str(e)}, status=500)

@@ -18,6 +18,9 @@ import datetime
 import traceback
 import os
 
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 # =========================
 # DATABASE
 # =========================
@@ -159,6 +162,106 @@ def login_user(request):
     except Exception:
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
+
+
+#google auth
+google_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=["token"],
+    properties={
+        "token": openapi.Schema(
+            type=openapi.TYPE_STRING
+        )
+    }
+)
+@swagger_auto_schema(
+    method="post",
+    request_body=google_schema
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def google_auth(request):
+
+    try:
+        google_token = request.data.get("token")
+
+        if not google_token:
+            return Response(
+                {"error": "Google token required"},
+                status=400
+            )
+
+        # Verify token with Google
+        idinfo = id_token.verify_oauth2_token(
+            google_token,
+            google_requests.Request(),
+            os.getenv("GOOGLE_CLIENT_ID")
+        )
+
+        email = idinfo.get("email")
+        username = idinfo.get("name")
+
+        if not email:
+            return Response(
+                {"error": "Invalid Google account"},
+                status=400
+            )
+
+        email = email.lower()
+
+        # Check if user exists
+        user = users_col.find_one({"email": email})
+
+        # Create user if not exists
+        if not user:
+
+            user_data = {
+                "username": username,
+                "email": email,
+                "google_auth": True,
+                "created_at": datetime.datetime.utcnow()
+            }
+
+            inserted = users_col.insert_one(user_data)
+
+            user = users_col.find_one({
+                "_id": inserted.inserted_id
+            })
+
+        # Create JWT
+        token = jwt.encode(
+            {
+                "user_id": str(user["_id"]),
+                "exp": datetime.datetime.utcnow()
+                + ACCESS_TOKEN_LIFETIME,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256"
+        )
+
+        return Response({
+            "access_token": token,
+            "user": {
+                "email": user.get("email"),
+                "username": user.get("username"),
+            }
+        })
+
+    except ValueError:
+        return Response(
+            {"error": "Invalid Google token"},
+            status=401
+        )
+
+    except Exception as e:
+        traceback.print_exc()
+
+        return Response(
+            {"error": str(e)},
+            status=500
+        )
+
+
 
 
 # =========================

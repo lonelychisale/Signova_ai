@@ -157,6 +157,7 @@ register_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     required=["email", "password"],
     properties={
+        "username": openapi.Schema(type=openapi.TYPE_STRING),
         "email": openapi.Schema(type=openapi.TYPE_STRING),
         "password": openapi.Schema(type=openapi.TYPE_STRING),
         "country": openapi.Schema(type=openapi.TYPE_STRING),
@@ -196,6 +197,7 @@ def register_user(request):
         )
 
         user = users_col.insert_one({
+            "username": data.get("username"),
             "email": email,
             "password": hashed,
             "country": data.get("country"),

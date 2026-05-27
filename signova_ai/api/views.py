@@ -174,6 +174,21 @@ google_schema = openapi.Schema(
         )
     }
 )
+# =========================
+# GOOGLE AUTH (ALL PLATFORMS)
+# =========================
+
+google_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=["token"],
+    properties={
+        "token": openapi.Schema(
+            type=openapi.TYPE_STRING,
+            description="Google ID token"
+        ),
+    }
+)
+
 @swagger_auto_schema(
     method="post",
     request_body=google_schema
@@ -191,15 +206,35 @@ def google_auth(request):
                 status=400
             )
 
-        # Verify token with Google
+        # =====================================
+        # VERIFY TOKEN WITHOUT CLIENT ID
+        # WORKS FOR:
+        # - Android
+        # - iOS
+        # - Web
+        # - Flutter
+        # =====================================
+
         idinfo = id_token.verify_oauth2_token(
             google_token,
-            google_requests.Request(),
-            os.getenv("GOOGLE_CLIENT_ID")
+            google_requests.Request()
         )
+
+        # Optional checks
+        issuer = idinfo.get("iss")
+
+        if issuer not in [
+            "accounts.google.com",
+            "https://accounts.google.com"
+        ]:
+            return Response(
+                {"error": "Invalid token issuer"},
+                status=401
+            )
 
         email = idinfo.get("email")
         username = idinfo.get("name")
+        picture = idinfo.get("picture")
 
         if not email:
             return Response(
@@ -209,15 +244,24 @@ def google_auth(request):
 
         email = email.lower()
 
-        # Check if user exists
-        user = users_col.find_one({"email": email})
+        # =====================================
+        # CHECK USER
+        # =====================================
 
-        # Create user if not exists
+        user = users_col.find_one({
+            "email": email
+        })
+
+        # =====================================
+        # CREATE USER
+        # =====================================
+
         if not user:
 
             user_data = {
                 "username": username,
                 "email": email,
+                "picture": picture,
                 "google_auth": True,
                 "created_at": datetime.datetime.utcnow()
             }
@@ -228,10 +272,14 @@ def google_auth(request):
                 "_id": inserted.inserted_id
             })
 
-        # Create JWT
-        token = jwt.encode(
+        # =====================================
+        # GENERATE JWT
+        # =====================================
+
+        access_token = jwt.encode(
             {
                 "user_id": str(user["_id"]),
+                "email": user["email"],
                 "exp": datetime.datetime.utcnow()
                 + ACCESS_TOKEN_LIFETIME,
             },
@@ -239,11 +287,18 @@ def google_auth(request):
             algorithm="HS256"
         )
 
+        # =====================================
+        # RESPONSE
+        # =====================================
+
         return Response({
-            "access_token": token,
+            "message": "Google login successful",
+            "access_token": access_token,
             "user": {
+                "id": str(user["_id"]),
                 "email": user.get("email"),
                 "username": user.get("username"),
+                "picture": user.get("picture"),
             }
         })
 
@@ -260,8 +315,6 @@ def google_auth(request):
             {"error": str(e)},
             status=500
         )
-
-
 
 
 # =========================

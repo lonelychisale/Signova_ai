@@ -503,7 +503,7 @@ import requests
 # =========================
 # SPEECH TO TEXT - GROQ WHISPER (Best Current Option)
 # =========================
-GROQ_API_KEY = "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"   # ← Put your Groq key here
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # ← Put your Groq key here
 
 @swagger_auto_schema(
     method="post",

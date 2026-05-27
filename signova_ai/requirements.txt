@@ -1,51 +1,39 @@
-# Core Django
+# ================= DJANGO =================
 Django==4.2.11
 asgiref==3.7.2
 sqlparse==0.4.4
 
-# Server
+# ================= SERVER =================
 gunicorn==21.2.0
 whitenoise==6.6.0
 
-# Environment variables
+# ================= ENV =================
 django-environ==0.11.2
 python-dotenv==1.0.1
 
-# Database
-psycopg2-binary==2.9.9
-dj-database-url==2.1.0
-
-# API
+# ================= REST API =================
 djangorestframework==3.14.0
-djangorestframework-simplejwt==5.3.0
 drf-yasg==1.21.7
 
-# HTTP / networking
-requests==2.31.0
-urllib3==2.0.7
-httpx==0.27.0
-
-# Auth / crypto
-cryptography==42.0.5
+# ================= AUTH =================
 PyJWT==2.8.0
 bcrypt==4.1.2
 
-# Data handling
-pydantic==2.6.4
-typing_extensions==4.10.0
+# ================= MONGODB =================
+pymongo==4.6.3
 
-# Utilities
-python-dateutil==2.9.0
-pytz==2024.1
-packaging==23.2
+# ================= REQUESTS =================
+requests==2.31.0
 
-# Image + media (safe ones only)
-pillow==10.2.0
+# ================= MEDIA =================
+Pillow==10.2.0
 
-# OpenAI (if used)
+# ================= WHISPER =================
+faster-whisper==1.0.3
+ctranslate2==4.4.0
+onnxruntime==1.17.3
+av==12.0.0
+
+# ================= OPTIONAL =================
 openai==1.30.0
 tiktoken==0.6.0
-
-# Optional Mongo (only if you use it)
-pymongo==4.6.3
-mongoengine==0.27.0

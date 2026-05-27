@@ -6,16 +6,16 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     git \
-    build-essential \
- && rm -rf /var/lib/apt/lists/*
+    libjpeg-dev \
+    zlib1g-dev \
+    libpng-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY . .
 
-# Upgrade pip tools
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip install --upgrade pip setuptools wheel
 
-# Install requirements
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["sh", "-c", "gunicorn signova_ai.wsgi:application --bind 0.0.0.0:$PORT"]
+CMD ["gunicorn", "signova_ai.wsgi:application", "--bind", "0.0.0.0:8000"]

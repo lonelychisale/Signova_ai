@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     # ✅ Third party
     "rest_framework",
     "drf_yasg",
-
+    "corsheaders",
     # ✅ Your app
     "api",
 ]
@@ -39,6 +39,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
+    "corsheaders.middleware.CorsMiddleware",   
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -109,7 +110,7 @@ SWAGGER_SETTINGS = {
         }
     }
 }
-
+CORS_ALLOW_ALL_ORIGINS = True
 
 # SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # SECURE_SSL_REDIRECT = True

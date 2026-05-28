@@ -11,5 +11,6 @@ urlpatterns = [
     # path("request-password-reset/", views.request_password_reset),
     path("reset-password/", views.reset_password),
     path("speech-to-text/", views.whisper_transcribe),
+    path("predict-sign/", views.predict_sign_api),
     # path("text-to-sign/", views.text_to_sign),
 ]

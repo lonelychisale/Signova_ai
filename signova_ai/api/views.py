@@ -2,6 +2,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+import tempfile
+from ai.predict import predict_sign
+
 from django.conf import settings
 
 from drf_yasg.utils import swagger_auto_schema
@@ -452,3 +457,109 @@ def whisper_transcribe(request):
     except Exception as e:
         traceback.print_exc()
         return Response({"error": str(e)}, status=500)
+
+
+
+
+# =========================
+#PREDICT_sIGN SWAGGER SCHEMA
+# =========================
+predict_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=["coordinates"],
+    properties={
+        "coordinates": openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Items(
+                type=openapi.TYPE_NUMBER
+            ),
+            description="Array of 63 hand landmark values"
+        )
+    }
+)
+
+# =========================
+# PREDICT SIGN API
+# =========================
+@swagger_auto_schema(
+    method="post",
+    request_body=predict_schema,
+    operation_summary="Predict Sign Language",
+    operation_description="""
+Send 63 MediaPipe hand landmark coordinates
+to predict the sign language letter.
+
+Example:
+[x1, y1, z1, x2, y2, z2, ...]
+""",
+    responses={
+        200: openapi.Response(
+            description="Prediction successful"
+        ),
+        400: "Bad Request",
+        500: "Internal Server Error"
+    }
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def predict_sign_api(request):
+
+    try:
+
+        coordinates = request.data.get("coordinates")
+
+        # =========================
+        # VALIDATION
+        # =========================
+        if not coordinates:
+
+            return Response(
+                {
+                    "error": "Coordinates required"
+                },
+                status=400
+            )
+
+        if not isinstance(coordinates, list):
+
+            return Response(
+                {
+                    "error": "Coordinates must be a list"
+                },
+                status=400
+            )
+
+        if len(coordinates) != 63:
+
+            return Response(
+                {
+                    "error": "Exactly 63 coordinate values required"
+                },
+                status=400
+            )
+
+        # =========================
+        # PREDICTION
+        # =========================
+        prediction = predict_sign(
+            coordinates
+        )
+
+        # =========================
+        # RESPONSE
+        # =========================
+        return Response({
+            "success": True,
+            "prediction": prediction
+        })
+
+    except Exception as e:
+
+        return Response(
+            {
+                "success": False,
+                "error": str(e)
+            },
+            status=500
+        )
+

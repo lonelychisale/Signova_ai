@@ -3,6 +3,7 @@ import mediapipe as mp
 import csv
 import os
 import urllib.request
+import numpy as np
 
 # =========================
 # PATHS
@@ -30,7 +31,7 @@ MODEL_URL = (
 )
 
 # =========================
-# DOWNLOAD MODEL
+# DOWNLOAD MODEL (if missing)
 # =========================
 if not os.path.exists(MODEL_PATH):
 
@@ -38,10 +39,7 @@ if not os.path.exists(MODEL_PATH):
 
     os.makedirs(MODEL_DIR, exist_ok=True)
 
-    urllib.request.urlretrieve(
-        MODEL_URL,
-        MODEL_PATH
-    )
+    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
     print("✅ Model downloaded!")
 
@@ -51,22 +49,15 @@ if not os.path.exists(MODEL_PATH):
 headers = []
 
 for i in range(21):
-
-    headers.extend([
-        f"x{i}",
-        f"y{i}",
-        f"z{i}"
-    ])
+    headers.extend([f"x{i}", f"y{i}", f"z{i}"])
 
 headers.append("label")
 
 # =========================
-# CREATE CSV
+# CREATE CSV FILE
 # =========================
 with open(CSV_FILE, "w", newline="") as f:
-
     writer = csv.writer(f)
-
     writer.writerow(headers)
 
 # =========================
@@ -84,9 +75,7 @@ options = vision.HandLandmarkerOptions(
     num_hands=1
 )
 
-landmarker = vision.HandLandmarker.create_from_options(
-    options
-)
+landmarker = vision.HandLandmarker.create_from_options(options)
 
 # =========================
 # PROCESS DATASET
@@ -94,70 +83,92 @@ landmarker = vision.HandLandmarker.create_from_options(
 print("\n🚀 Processing dataset...\n")
 
 total_saved = 0
+skipped = 0
 
-for label in os.listdir(DATASET_DIR):
+# ✅ Open CSV ONCE (fast)
+with open(CSV_FILE, "a", newline="") as f:
+    writer = csv.writer(f)
 
-    label_path = os.path.join(
-        DATASET_DIR,
-        label
-    )
+    # Loop through labels (A, B, C...)
+    for label in os.listdir(DATASET_DIR):
 
-    if not os.path.isdir(label_path):
-        continue
+        label_path = os.path.join(DATASET_DIR, label)
 
-    print(f"📂 Processing letter: {label}")
-
-    for image_name in os.listdir(label_path):
-
-        image_path = os.path.join(
-            label_path,
-            image_name
-        )
-
-        image = cv2.imread(image_path)
-
-        if image is None:
+        if not os.path.isdir(label_path):
             continue
 
-        rgb = cv2.cvtColor(
-            image,
-            cv2.COLOR_BGR2RGB
-        )
+        print(f"📂 Processing letter: {label}")
 
-        mp_image = mp.Image(
-            image_format=mp.ImageFormat.SRGB,
-            data=rgb
-        )
+        # Loop through images
+        for image_name in os.listdir(label_path):
 
-        result = landmarker.detect(mp_image)
+            image_path = os.path.join(label_path, image_name)
 
-        # =========================
-        # HAND FOUND
-        # =========================
-        if result.hand_landmarks:
+            image = cv2.imread(image_path)
+
+            if image is None:
+                skipped += 1
+                continue
+
+            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=rgb
+            )
+
+            result = landmarker.detect(mp_image)
+
+            # =========================
+            # HAND FOUND
+            # =========================
+            if not result.hand_landmarks:
+                skipped += 1
+                continue
 
             for hand_landmarks in result.hand_landmarks:
 
-                coordinates = []
+                # =========================
+                # EXTRACT COORDINATES
+                # =========================
+                coords = []
 
                 for lm in hand_landmarks:
+                    coords.append([lm.x, lm.y, lm.z])
 
-                    coordinates.extend([
-                        lm.x,
-                        lm.y,
-                        lm.z
-                    ])
+                coords = np.array(coords)
+
+                # =========================
+                # NORMALIZATION (CRITICAL)
+                # =========================
+
+                # ✔ 1. Center (wrist)
+                wrist = coords[0]
+                coords = coords - wrist
+
+                # ✔ 2. Reduce Z effect
+                coords[:, 2] *= 0.5
+
+                # ✔ 3. Scale normalization
+                max_val = np.max(np.abs(coords))
+                if max_val != 0:
+                    coords = coords / max_val
+
+                # Flatten
+                row = coords.flatten().tolist()
 
                 # Add label
-                coordinates.append(label)
+                row.append(label)
 
-                # Save row
-                with open(CSV_FILE, "a", newline="") as f:
-
-                    csv.writer(f).writerow(coordinates)
+                # Save to CSV
+                writer.writerow(row)
 
                 total_saved += 1
 
+# =========================
+# DONE
+# =========================
 print("\n✅ DATASET COMPLETE!")
-print(f"Saved samples: {total_saved}")
-print(f"CSV location: {CSV_FILE}")
+print(f"✅ Saved samples: {total_saved}")
+print(f"⚠️ Skipped images: {skipped}")
+print(f"📁 CSV location: {CSV_FILE}")

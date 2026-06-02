@@ -2,99 +2,107 @@ import cv2
 import mediapipe as mp
 import os
 import urllib.request
+import numpy as np
 import time
+import requests
+import json
 
 from predict import predict_sign
 
 # =========================
-# MODEL SETUP
+# API CONFIG
+# =========================
+API_URL = "http://127.0.0.1:8000/api/auth/predict-sign/"
+
+# =========================
+# PATH SETUP
 # =========================
 BASE_DIR = os.path.dirname(__file__)
 
 MODEL_DIR = os.path.join(BASE_DIR, "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-MODEL_PATH = os.path.join(
-    MODEL_DIR,
-    "hand_landmarker.task"
-)
+MODEL_PATH = os.path.join(MODEL_DIR, "hand_landmarker.task")
 
 MODEL_URL = (
     "https://storage.googleapis.com/"
     "mediapipe-models/hand_landmarker/"
-    "hand_landmarker/float16/1/"
-    "hand_landmarker.task"
+    "hand_landmarker/float16/1/hand_landmarker.task"
 )
 
+# =========================
+# DOWNLOAD MODEL
+# =========================
 if not os.path.exists(MODEL_PATH):
-
-    print("Downloading model...")
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-
-    urllib.request.urlretrieve(
-        MODEL_URL,
-        MODEL_PATH
-    )
+    print("⬇️ Downloading model...")
+    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+    print("✅ Model ready!")
 
 # =========================
-# MEDIAPIPE
+# MEDIAPIPE SETUP
 # =========================
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
 
-base_options = BaseOptions(
-    model_asset_path=MODEL_PATH
-)
+base_options = BaseOptions(model_asset_path=MODEL_PATH)
 
 options = vision.HandLandmarkerOptions(
     base_options=base_options,
     num_hands=1
 )
 
-landmarker = vision.HandLandmarker.create_from_options(
-    options
-)
+landmarker = vision.HandLandmarker.create_from_options(options)
+
+# =========================
+# NORMALIZATION
+# =========================
+def normalize_sample(coords_list):
+    coords = np.array(coords_list).reshape(21, 3)
+
+    wrist = coords[0]
+    coords = coords - wrist
+
+    coords[:, 2] *= 0.5
+
+    max_val = np.max(np.abs(coords))
+    if max_val != 0:
+        coords = coords / max_val
+
+    return coords.flatten().tolist()
+
+# =========================
+# SENTENCE VARIABLES
+# =========================
+sentence = ""
+current_prediction = ""
+stable_prediction = ""
+prediction_start_time = None
+last_added_letter = ""
+
+STABLE_TIME = 1.2
+NO_HAND_TIMEOUT = 2.0
+
+last_hand_seen = time.time()
 
 # =========================
 # CAMERA
 # =========================
 cap = cv2.VideoCapture(0)
 
-# =========================
-# TEXT VARIABLES
-# =========================
-current_letter = ""
-last_letter = ""
-
-sentence = ""
-
-last_prediction_time = time.time()
-
-PREDICTION_DELAY = 1.0
-
-print("\n🚀 Sign Language Word Builder Started")
-print("Press:")
-print("SPACE = add space")
-print("BACKSPACE = delete last letter")
-print("C = clear sentence")
-print("Q = quit\n")
+print("\n🚀 System running (API + FULL COORDINATES + SENTENCE)")
 
 # =========================
 # LOOP
 # =========================
 while True:
 
-    success, frame = cap.read()
-
-    if not success:
+    ret, frame = cap.read()
+    if not ret:
         continue
 
     frame = cv2.flip(frame, 1)
 
-    rgb = cv2.cvtColor(
-        frame,
-        cv2.COLOR_BGR2RGB
-    )
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     mp_image = mp.Image(
         image_format=mp.ImageFormat.SRGB,
@@ -104,8 +112,14 @@ while True:
     result = landmarker.detect(mp_image)
 
     prediction = ""
+    current_time = time.time()
 
+    # =========================
+    # HAND DETECTED
+    # =========================
     if result.hand_landmarks:
+
+        last_hand_seen = current_time
 
         for hand_landmarks in result.hand_landmarks:
 
@@ -113,53 +127,74 @@ while True:
 
             h, w, _ = frame.shape
 
-            # =========================
-            # EXTRACT LANDMARKS
-            # =========================
             for lm in hand_landmarks:
-
-                coordinates.extend([
-                    lm.x,
-                    lm.y,
-                    lm.z
-                ])
+                coordinates.extend([lm.x, lm.y, lm.z])
 
                 cx = int(lm.x * w)
                 cy = int(lm.y * h)
+                cv2.circle(frame, (cx, cy), 4, (0, 255, 0), -1)
 
-                cv2.circle(
-                    frame,
-                    (cx, cy),
-                    5,
-                    (0, 255, 0),
-                    -1
+            # ✅ VALIDATE LENGTH
+            if len(coordinates) != 63:
+                print("❌ Invalid length:", len(coordinates))
+                continue
+
+            # ✅ Normalize
+            normalized_coords = normalize_sample(coordinates)
+
+            # =========================
+            # ✅ PRINT FULL API FORMAT
+            # =========================
+            print("\n========================")
+            print("✅ Length:", len(normalized_coords))
+
+            json_data = json.dumps({
+                "coordinates": [round(v, 6) for v in normalized_coords]
+            })
+
+            print("\n✅ COPY THIS JSON TO API:")
+            print(json_data)
+
+            # =========================
+            # ✅ SEND TO API
+            # =========================
+            try:
+                response = requests.post(
+                    API_URL,
+                    json={"coordinates": normalized_coords}
                 )
 
-            # =========================
-            # PREDICT LETTER
-            # =========================
-            prediction = predict_sign(
-                coordinates
-            )
+                if response.status_code == 200:
+                    prediction = response.json().get("prediction", "")
+                else:
+                    prediction = "ERR"
+
+            except Exception as e:
+                print("❌ API error:", e)
+                prediction = ""
+
+            print("Prediction:", prediction)
 
             # =========================
-            # SMART LETTER ADDING
+            # ✅ SENTENCE STABILIZATION
             # =========================
-            current_time = time.time()
+            if prediction != current_prediction:
+                current_prediction = prediction
+                prediction_start_time = current_time
+            else:
+                if prediction_start_time:
+                    elapsed = current_time - prediction_start_time
 
-            if (
-                prediction != last_letter
-                and current_time - last_prediction_time > PREDICTION_DELAY
-            ):
+                    if elapsed >= STABLE_TIME:
+                        stable_prediction = prediction
 
-                sentence += prediction
-
-                last_letter = prediction
-
-                last_prediction_time = current_time
+                        if stable_prediction != last_added_letter:
+                            sentence += stable_prediction
+                            last_added_letter = stable_prediction
+                            prediction_start_time = current_time
 
             # =========================
-            # DRAW CONNECTIONS
+            # DRAW HAND CONNECTIONS
             # =========================
             connections = [
                 (0,1),(1,2),(2,3),(3,4),
@@ -171,67 +206,49 @@ while True:
             ]
 
             for start, end in connections:
-
                 x1 = int(hand_landmarks[start].x * w)
                 y1 = int(hand_landmarks[start].y * h)
-
                 x2 = int(hand_landmarks[end].x * w)
                 y2 = int(hand_landmarks[end].y * h)
+                cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-                cv2.line(
-                    frame,
-                    (x1, y1),
-                    (x2, y2),
-                    (255, 0, 0),
-                    2
-                )
+    # =========================
+    # AUTO SPACE
+    # =========================
+    else:
+        if current_time - last_hand_seen > NO_HAND_TIMEOUT:
+            if len(sentence) > 0 and not sentence.endswith(" "):
+                sentence += " "
+                last_added_letter = ""
+                last_hand_seen = current_time
 
     # =========================
     # DISPLAY
     # =========================
-    cv2.putText(
-        frame,
-        f"Current: {prediction}",
-        (20, 50),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),
-        2
-    )
+    cv2.putText(frame, f"Prediction: {prediction}",
+                (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                (0, 255, 0), 2)
 
-    cv2.putText(
-        frame,
-        f"Text: {sentence}",
-        (20, 100),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (255, 255, 255),
-        2
-    )
+    cv2.putText(frame, f"Sentence: {sentence}",
+                (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                (255, 255, 255), 2)
 
-    cv2.imshow(
-        "Sign Language Word Builder",
-        frame
-    )
+    cv2.putText(frame, "Q=Quit | C=Clear",
+                (20, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                (255, 255, 0), 2)
+
+    cv2.imshow("Sign Language System", frame)
 
     # =========================
     # KEYS
     # =========================
     key = cv2.waitKey(1) & 0xFF
 
-    # Quit
     if key == ord("q"):
         break
-
-    # Add space
-    elif key == 32:
-        sentence += " "
-
-    # Clear
     elif key == ord("c"):
         sentence = ""
-
-    # Backspace
+        last_added_letter = ""
     elif key == 8:
         sentence = sentence[:-1]
 

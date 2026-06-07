@@ -88,12 +88,9 @@ def health_check(request):
     type=openapi.TYPE_OBJECT,
     required=["email", "password"],
     properties={
-        "username": openapi.Schema(type=openapi.TYPE_STRING),
+        "fullname": openapi.Schema(type=openapi.TYPE_STRING),
         "email": openapi.Schema(type=openapi.TYPE_STRING),
         "password": openapi.Schema(type=openapi.TYPE_STRING),
-        "country": openapi.Schema(type=openapi.TYPE_STRING),
-        "gender": openapi.Schema(type=openapi.TYPE_STRING),
-        "age": openapi.Schema(type=openapi.TYPE_INTEGER),
     }
 ))
 @api_view(["POST"])
@@ -113,12 +110,9 @@ def register_user(request):
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
         user = users_col.insert_one({
-            "username": data.get("username"),
+            "fullname": data.get("fullname"),
             "email": email,
             "password": hashed,
-            "country": data.get("country"),
-            "gender": data.get("gender"),
-            "age": data.get("age"),
             "created_at": datetime.datetime.utcnow()
         })
 
@@ -238,7 +232,7 @@ def google_auth(request):
             )
 
         email = idinfo.get("email")
-        username = idinfo.get("name")
+        fullname = idinfo.get("name")
         picture = idinfo.get("picture")
 
         if not email:
@@ -264,7 +258,7 @@ def google_auth(request):
         if not user:
 
             user_data = {
-                "username": username,
+                "fullname": fullname,
                 "email": email,
                 "picture": picture,
                 "google_auth": True,
@@ -302,7 +296,7 @@ def google_auth(request):
             "user": {
                 "id": str(user["_id"]),
                 "email": user.get("email"),
-                "username": user.get("username"),
+                "fullname": user.get("fullname"),
                 "picture": user.get("picture"),
             }
         })
@@ -374,11 +368,8 @@ def user_profile(request):
             return Response({"error": "User not found"}, status=404)
 
         return Response({
-            "username": user.get("username"),
+            "fullname": user.get("fullname"),
             "email": user.get("email"),
-            "country": user.get("country"),
-            "gender": user.get("gender"),
-            "age": user.get("age"),
         })
     except Exception:
         traceback.print_exc()
